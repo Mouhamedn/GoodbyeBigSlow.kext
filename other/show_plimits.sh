@@ -12,13 +12,19 @@ echo() {
   printf '%s\n' "$*"
 }
 
-# TODO: query using GoodbyeBigSlowClient instead
-sysctl -A -e \
-  | sed -e '/^[^=]*[Pp][Ll][Ii][Mm][Ii][Tt]/ b p' \
+script_dir="$(dirname -- "$0")"
+
+# Use GoodbyeBigSlowClient for querying PLimits and performance status
+{
+  if [ -x "${script_dir}/../GoodbyeBigSlowClient" ]; then
+    "${script_dir}/../GoodbyeBigSlowClient" || true
+  elif command -v GoodbyeBigSlowClient >/dev/null 2>&1; then
+    GoodbyeBigSlowClient || true
+  fi
+  sysctl -A -e
+} | sed -e '/^[^=]*[Pp][Ll][Ii][Mm][Ii][Tt]/ b p' \
         -e '/^hw.busfrequency=/ b p' \
         -e d -e ':p' -e 's/=/ = /'
-
-script_dir="$(dirname -- "$0")"
 
 xslt() {
   xsltproc --nonet --novalid --path "${script_dir}" ${1+"$@"}

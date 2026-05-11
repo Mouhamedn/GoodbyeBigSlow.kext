@@ -42,7 +42,10 @@ CODE_SIGN_IDENTITY := -
 # $ nm /System/Library/Kernels/kernel | less
 # $ otool -xV /System/Library/Kernels/kernel | less
 # $ kextfind -rsym _pmCPUControl
-all: $(KEXT_BIN)
+all: $(KEXT_BIN) GoodbyeBigSlowClient
+
+GoodbyeBigSlowClient: GoodbyeBigSlow/client.c
+	$(CC) $(CFLAGS) -Wall -Wextra -O3 -o $@ $< -framework IOKit -framework CoreFoundation
 
 $(KEXT_BIN): $(KEXT_DEPS) # $(PLUGIN_DIR)
 ifeq ($(XCODE),ON)
@@ -81,6 +84,6 @@ unload:
 	sudo kextunload -v 4 -b $(KEXT_ID)
 
 clean:
-	rm -v -R -f build
+	rm -v -R -f build GoodbyeBigSlowClient
 
 .PHONEY: all install uninstall clean
