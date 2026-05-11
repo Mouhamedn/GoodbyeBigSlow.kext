@@ -3,6 +3,7 @@
 \*==========================================================================*/
 
 #include <IOKit/IOLib.h>
+#include "GoodbyeBigSlowShared.h"
 #include "GoodbyeBigSlow.c"
 #include "GoodbyeBigSlow.hpp"
 
@@ -46,4 +47,82 @@ void GoodbyeBigSlow::stop(IOService* provider)
 {
     kext_stop(NULL, NULL);
     super::stop(provider);
+}
+
+IOReturn GoodbyeBigSlow::newUserClient(task_t owningTask, void* securityID,
+                                        UInt32 type, OSDictionary* properties,
+                                        IOUserClient** handler)
+{
+    IOReturn ret = kIOReturnSuccess;
+    GoodbyeBigSlowClient* client = new GoodbyeBigSlowClient;
+
+    if (!client) return kIOReturnNoMemory;
+
+    if (!client->initWithTask(owningTask, securityID, type, properties)) {
+        client->release();
+        return kIOReturnError;
+    }
+
+    if (!client->attach(this)) {
+        client->release();
+        return kIOReturnError;
+    }
+
+    if (!client->start(this)) {
+        client->detach(this);
+        client->release();
+        return kIOReturnError;
+    }
+
+    *handler = client;
+    return ret;
+}
+
+OSDefineMetaClassAndStructors(GoodbyeBigSlowClient, IOUserClient)
+
+bool GoodbyeBigSlowClient::initWithTask(task_t owningTask, void* securityID,
+                                         UInt32 type, OSDictionary* properties)
+{
+    if (!super::initWithTask(owningTask, securityID, type, properties)) return false;
+    fTask = owningTask;
+    return true;
+}
+
+bool GoodbyeBigSlowClient::start(IOService* provider)
+{
+    fProvider = OSDynamicCast(GoodbyeBigSlow, provider);
+    if (!fProvider) return false;
+    if (!super::start(provider)) return false;
+    return true;
+}
+
+void GoodbyeBigSlowClient::stop(IOService* provider)
+{
+    super::stop(provider);
+}
+
+IOReturn GoodbyeBigSlowClient::clientClose(void)
+{
+    terminate();
+    return kIOReturnSuccess;
+}
+
+IOReturn GoodbyeBigSlowClient::externalMethod(uint32_t selector, IOExternalMethodArguments* arguments,
+                                               IOExternalMethodDispatch* dispatch, OSObject* target, void* reference)
+{
+    if (selector >= kGBSMethodCount) return kIOReturnBadArgument;
+
+    // Dispatch table for external methods
+    static const IOExternalMethodDispatch sMethods[kGBSMethodCount] = {
+        {(IOExternalMethodAction)&gbs_msr_read, 1, 0, 1, 0},
+        {(IOExternalMethodAction)&gbs_msr_write, 4, 0, 0, 0},
+        {(IOExternalMethodAction)&gbs_plimit, 1, 0, 0, 0},
+        {(IOExternalMethodAction)&gbs_gpu_frequency, 1, 0, 0, 0},
+        {(IOExternalMethodAction)&gbs_cpu_frequency, 1, 0, 0, 0},
+        {(IOExternalMethodAction)&gbs_cpu_idle, 1, 0, 0, 0},
+        {(IOExternalMethodAction)&gbs_cpu_hwp, 1, 0, 0, 0},
+        {(IOExternalMethodAction)&gbs_voltage, 2, 0, 0, 0},
+    };
+
+    return sMethods[selector].checkAndCall(this, target, arguments);
 }
