@@ -51,6 +51,7 @@ const uint64_t kMsrThermalStatusMask = 0x28A;  // 0b1010001010
 // https://github.com/apple/darwin-xnu/blob/main/osfmk/i386/mp.h
 // Perform actions on all processor cores.
 extern void mp_rendezvous_no_intrs(void (*func)(void *), void *arg);
+extern char *PE_boot_args(void);
 
 // ALERT: Toggling PROCHOT more than once in ~2 ms period can result in
 //        constant Pn state (Low Frequency Mode) of the processor.
@@ -169,10 +170,61 @@ static bool has_flag(const char *args, const char *arg)
     if (arg[0] == '-' || arg[0] == '+') {
         size_t n = strlen(arg);
         for (const char *p = args; *p; ++p) {
-            if ((p == args || p[-1] == ':') && (p[n] == 0 || p[n] == ':')
-                    && eql_flag(p, arg, n)) {
+            if ((p == args || p[-1] == ':') && eql_flag(p, arg, n)
+                    && (p[n] == 0 || p[n] == ':')) {
                 return true;
             }
+        }
+    }
+    return false;
+}
+
+static bool isargsep(char c) {
+    return c == ' ' || c == '\t';
+}
+
+static bool my_parse_boot_argn(const char *arg_string, void *arg_ptr, int max_len) {
+    char *args = PE_boot_args();
+    if (!args || *args == '\0') return false;
+
+    size_t key_len = strlen(arg_string);
+    while (*args) {
+        while (*args && isargsep(*args)) args++;
+        if (*args == '\0') break;
+
+        char *cp = args;
+        while (*cp && !isargsep(*cp) && *cp != '=') cp++;
+
+        size_t name_len = cp - args;
+        if (name_len == key_len && strncmp(args, arg_string, name_len) == 0) {
+            if (*cp == '=') {
+                char *val = cp + 1;
+                char *dest = (char *)arg_ptr;
+                int i = 0;
+                while (i < max_len - 1 && *val && !isargsep(*val)) {
+                    dest[i++] = *val++;
+                }
+                if (max_len > 0) dest[i] = '\0';
+                return true;
+            } else {
+                if (max_len > 0) {
+                    memset(arg_ptr, 0, max_len);
+                    if (max_len >= 8) {
+                        *(int64_t *)arg_ptr = 1;
+                    } else if (max_len >= 4) {
+                        *(int32_t *)arg_ptr = 1;
+                    } else if (max_len >= 2) {
+                        *(int16_t *)arg_ptr = 1;
+                    } else {
+                        *(int8_t *)arg_ptr = 1;
+                    }
+                }
+                return true;
+            }
+        }
+        while (*args && !isargsep(*args) && *args != '=') args++;
+        if (*args == '=') {
+            while (*args && !isargsep(*args)) args++;
         }
     }
     return false;
@@ -250,7 +302,7 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     char boot_args[BOOT_ARGS_SIZE];
 
     // FIXME: CPU model and MSR read/write permission not checked
-    if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
+    if (my_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
         boot_args[BOOT_ARGS_SIZE - 1] = 0;
         if (has_flag(boot_args, "-turbo")) {
             DBLogStatus("Disabling Turbo Boost", -1);
