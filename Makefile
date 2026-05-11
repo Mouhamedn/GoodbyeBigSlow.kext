@@ -83,4 +83,11 @@ unload:
 clean:
 	rm -v -R -f build
 
-.PHONEY: all install uninstall clean
+test:
+	mkdir -p build
+	$(CC) -I GoodbyeBigSlow/tests/mock GoodbyeBigSlow/tests/test_cpu.c -o build/test_cpu
+	$(CC) -I GoodbyeBigSlow/tests/mock GoodbyeBigSlow/tests/test_flags.c -o build/test_flags
+	./build/test_cpu
+	./build/test_flags
+
+.PHONEY: all install uninstall clean test
