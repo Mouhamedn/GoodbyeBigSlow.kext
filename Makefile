@@ -80,6 +80,11 @@ load:
 unload:
 	sudo kextunload -v 4 -b $(KEXT_ID)
 
+test:
+	$(CC) -I GoodbyeBigSlow/tests/mock -I GoodbyeBigSlow/ GoodbyeBigSlow/tests/test_flags.c -o GoodbyeBigSlow/tests/test_flags
+	./GoodbyeBigSlow/tests/test_flags
+	rm GoodbyeBigSlow/tests/test_flags
+
 clean:
 	rm -v -R -f build
 
