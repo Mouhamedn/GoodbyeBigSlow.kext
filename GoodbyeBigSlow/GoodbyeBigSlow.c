@@ -58,14 +58,19 @@ static void mp_deassert_prochot(void *data)
 {
     SInt64 *cpucount = (SInt64 *)data;
     SInt64 *disabled = (SInt64 *)data + 1;
-    uint64_t old_bits = rdmsr64(MSR_IA32_POWER_CTL);
-    uint64_t new_bits = old_bits & ~kMsrEnableProcHot;
 
-    // hopefully not to cause invalid write and the black screen of death
-    if (old_bits != new_bits) {
-        wrmsr64(MSR_IA32_POWER_CTL, new_bits);
-        IOSleep(1);
-        if (!(rdmsr64(MSR_IA32_POWER_CTL) & kMsrEnableProcHot)) {
+    if (is_msr_supported(MSR_IA32_POWER_CTL)) {
+        uint64_t old_bits = rdmsr64(MSR_IA32_POWER_CTL);
+        uint64_t new_bits = old_bits & ~kMsrEnableProcHot;
+
+        // hopefully not to cause invalid write and the black screen of death
+        if (old_bits != new_bits) {
+            wrmsr64(MSR_IA32_POWER_CTL, new_bits);
+            IOSleep(1);
+            if (!(rdmsr64(MSR_IA32_POWER_CTL) & kMsrEnableProcHot)) {
+                OSIncrementAtomic64(VOLATILE_ACCESS(disabled));
+            }
+        } else {
             OSIncrementAtomic64(VOLATILE_ACCESS(disabled));
         }
     } else {
@@ -76,32 +81,37 @@ static void mp_deassert_prochot(void *data)
 
 static void mp_log_prochot(void *data)
 {
-    uint64_t mask = *((uint64_t *)data);
-    uint64_t old_bits = rdmsr64(MSR_IA32_THERM_STATUS);
-    uint64_t new_bits = old_bits & ~mask;
+    if (is_msr_supported(MSR_IA32_THERM_STATUS)) {
+        uint64_t mask = *((uint64_t *)data);
+        uint64_t old_bits = rdmsr64(MSR_IA32_THERM_STATUS);
+        uint64_t new_bits = old_bits & ~mask;
 
-    if (old_bits != new_bits) {
-        wrmsr64(MSR_IA32_THERM_STATUS, new_bits);
+        if (old_bits != new_bits) {
+            wrmsr64(MSR_IA32_THERM_STATUS, new_bits);
+        }
     }
 }
 
 static void log_prochot(void)
 {
     uint64_t mask = kMsrThermalStatusMask;
-    uint64_t old_bits = rdmsr64(MSR_IA32_PACKAGE_THERM_STATUS);
-    uint64_t new_bits = old_bits & ~mask;
 
-    if (old_bits & (1 << 11)) {
-        uint32_t registers[4] = {[eax]=6, [ebx]=0, [ecx]=0, [edx]=0};
-        cpuid(registers);
+    if (is_msr_supported(MSR_IA32_PACKAGE_THERM_STATUS)) {
+        uint64_t old_bits = rdmsr64(MSR_IA32_PACKAGE_THERM_STATUS);
+        uint64_t new_bits = old_bits & ~mask;
 
-        if (registers[eax] & (1 << 4)) {
-            mask |= (1 << 11);
-            new_bits &= ~mask;
+        if (old_bits & (1 << 11)) {
+            uint32_t registers[4] = {[eax]=6, [ebx]=0, [ecx]=0, [edx]=0};
+            cpuid(registers);
+
+            if (registers[eax] & (1 << 4)) {
+                mask |= (1 << 11);
+                new_bits &= ~mask;
+            }
         }
-    }
-    if (old_bits != new_bits) {
-        wrmsr64(MSR_IA32_PACKAGE_THERM_STATUS, new_bits);
+        if (old_bits != new_bits) {
+            wrmsr64(MSR_IA32_PACKAGE_THERM_STATUS, new_bits);
+        }
     }
     mp_rendezvous_no_intrs(mp_log_prochot, &mask);
 }
@@ -121,18 +131,20 @@ static bool deassert_prochot(void)
 
 static bool disable_turbo(void)
 {
-    uint32_t registers[4] = {[eax]=6, [ebx]=0, [ecx]=0, [edx]=0};
-    cpuid(registers);
+    if (is_msr_supported(MSR_IA32_MISC_ENABLE)) {
+        uint32_t registers[4] = {[eax]=6, [ebx]=0, [ecx]=0, [edx]=0};
+        cpuid(registers);
 
-    if (registers[eax] & (1 << 1)) {
-        uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
-        uint64_t new_bits = old_bits | kMsrDisableTurboBoost;
+        if (registers[eax] & (1 << 1)) {
+            uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
+            uint64_t new_bits = old_bits | kMsrDisableTurboBoost;
 
-        if (old_bits != new_bits) {
-            // XXX: CPUID.06H:EAX[1] => 0
-            wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
-            IOSleep(1);
-            return rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost;
+            if (old_bits != new_bits) {
+                // XXX: CPUID.06H:EAX[1] => 0
+                wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
+                IOSleep(1);
+                return rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost;
+            }
         }
     }
     return true;
@@ -140,17 +152,19 @@ static bool disable_turbo(void)
 
 static bool disable_speedstep(void)
 {
-    uint32_t registers[4] = {[eax]=1, [ebx]=0, [ecx]=0, [edx]=0};
-    cpuid(registers);
+    if (is_msr_supported(MSR_IA32_MISC_ENABLE)) {
+        uint32_t registers[4] = {[eax]=1, [ebx]=0, [ecx]=0, [edx]=0};
+        cpuid(registers);
 
-    if (registers[ecx] & (1 << 7)) {
-        uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
-        uint64_t new_bits = old_bits & ~kMsrEnableSpeedStep;
+        if (registers[ecx] & (1 << 7)) {
+            uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
+            uint64_t new_bits = old_bits & ~kMsrEnableSpeedStep;
 
-        if (old_bits != new_bits) {
-            wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
-            IOSleep(1);
-            return !(rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrEnableSpeedStep);
+            if (old_bits != new_bits) {
+                wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
+                IOSleep(1);
+                return !(rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrEnableSpeedStep);
+            }
         }
     }
     return true;
@@ -178,32 +192,140 @@ static bool has_flag(const char *args, const char *arg)
     return false;
 }
 
-static bool using_targeted_intel_cpu(void)
+static uint32_t get_display_family(uint32_t eax_val)
 {
-    uint32_t registers[4] = {[eax]=0x00, [ebx]=0xFF, [ecx]=0xFF, [edx]=0xFF};
+    uint32_t family = (eax_val >> 8) & 0x0F;
+    if (family == 0x0F) {
+        family += (eax_val >> 20) & 0xFF;
+    }
+    return family;
+}
+
+static uint32_t get_display_model(uint32_t eax_val)
+{
+    uint32_t family = (eax_val >> 8) & 0x0F;
+    uint32_t model = (eax_val >> 4) & 0x0F;
+    if (family == 0x06 || family == 0x0F) {
+        model += ((eax_val >> 16) & 0x0F) << 4;
+    }
+    return model;
+}
+
+static bool is_xeon(void)
+{
+    uint32_t registers[4];
+    char brand_string[48];
+
+    registers[eax] = 0x80000000;
     cpuid(registers);
-    uint32_t maxval = registers[eax];
+    if (registers[eax] < 0x80000004) return false;
 
-    bool GenuineIntel = registers[ebx] == 0x756E6547 &&
-                        registers[edx] == 0x49656E69 &&
-                        registers[ecx] == 0x6C65746E &&
-                        maxval >= 0x01;
-
-    // check cpu vendor
-    if (GenuineIntel) {
-        registers[eax] = 0x01;
+    for (uint32_t i = 0; i < 3; i++) {
+        registers[eax] = 0x80000002 + i;
         cpuid(registers);
-        // check cpu family but not model
-        if (((registers[eax] >> 8) & 0x0F) == 0x06) {
-            // supports package thermal management (PTM) ?
-            if (maxval >= 0x06) {
-                registers[eax] = 0x06;
-                cpuid(registers);
-                return registers[eax] & (1 << 6);
-            }
+        memcpy(brand_string + i * 16, registers, 16);
+    }
+
+    for (int i = 0; i < 44; i++) {
+        if ((brand_string[i] == 'X' || brand_string[i] == 'x') &&
+            (brand_string[i+1] == 'E' || brand_string[i+1] == 'e') &&
+            (brand_string[i+2] == 'O' || brand_string[i+2] == 'o') &&
+            (brand_string[i+3] == 'N' || brand_string[i+3] == 'n')) {
+            return true;
         }
     }
     return false;
+}
+
+static bool is_cpu_supported(void)
+{
+    uint32_t registers[4] = {0};
+    cpuid(registers);
+    if (registers[ebx] != 0x756E6547 || registers[edx] != 0x49656E69 || registers[ecx] != 0x6C65746E)
+        return false;
+
+    registers[eax] = 0x01;
+    cpuid(registers);
+    uint32_t family = get_display_family(registers[eax]);
+    uint32_t model = get_display_model(registers[eax]);
+
+    if (family != 0x06) return false;
+
+    switch (model) {
+        case 0x5C: // Goldmont
+        case 0x7A: // Goldmont Plus
+        case 0x86: // Tremont
+        case 0x96:
+        case 0x9C:
+        case 0x1A: // Nehalem
+        case 0x1E:
+        case 0x1F:
+        case 0x2E:
+        case 0x25: // Westmere
+        case 0x2C:
+        case 0x2F:
+        case 0x2A: // Sandy Bridge
+        case 0x2D:
+        case 0x3E: // Ivy Bridge-E
+        case 0x3C: // Haswell
+        case 0x45:
+        case 0x46:
+        case 0x3F: // Haswell-E
+        case 0x3D: // Broadwell
+        case 0x47:
+        case 0x56:
+        case 0x4F: // Broadwell-E (Xeon only)
+            if (model == 0x4F && !is_xeon()) return false;
+            return true;
+        case 0x4E: // Skylake
+        case 0x5E:
+        case 0x55: // Skylake-X / Cascade Lake / Cooper Lake
+        case 0x8E: // Kaby Lake / Coffee Lake / Whiskey Lake / Comet Lake
+        case 0x9E:
+        case 0x66: // Cannon Lake
+        case 0xA5: // Comet Lake
+        case 0xA6:
+        case 0x7D: // Ice Lake
+        case 0x7E:
+        case 0x8C: // Tiger Lake
+        case 0x8D:
+        case 0x6A: // Ice Lake-SP
+        case 0x6C:
+        case 0x97: // Alder Lake
+        case 0x9A:
+        case 0xBF:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool is_msr_supported(uint32_t msr)
+{
+    if (!is_cpu_supported()) return false;
+
+    uint32_t registers[4] = {0};
+
+    switch (msr) {
+        case MSR_IA32_POWER_CTL:
+        case MSR_IA32_MISC_ENABLE:
+            return true;
+        case MSR_IA32_THERM_STATUS:
+            registers[eax] = 0x06;
+            cpuid(registers);
+            return (registers[eax] & (1 << 0)) != 0; // DTS
+        case MSR_IA32_PACKAGE_THERM_STATUS:
+            registers[eax] = 0x06;
+            cpuid(registers);
+            return (registers[eax] & (1 << 6)) != 0; // PTM
+        default:
+            return false;
+    }
+}
+
+static bool using_targeted_intel_cpu(void)
+{
+    return is_cpu_supported();
 }
 
 #define LOG(fmt, ...) IOLog("[GoodbyeBigSlow] " fmt "\n", __VA_ARGS__)
@@ -249,7 +371,6 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     // return true after the first match; no copy/assignment if arg_size is 0
     char boot_args[BOOT_ARGS_SIZE];
 
-    // FIXME: CPU model and MSR read/write permission not checked
     if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
         boot_args[BOOT_ARGS_SIZE - 1] = 0;
         if (has_flag(boot_args, "-turbo")) {
