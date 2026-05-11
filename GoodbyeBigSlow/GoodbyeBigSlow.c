@@ -156,23 +156,38 @@ static bool disable_speedstep(void)
     return true;
 }
 
-static bool eql_flag(const char *a, const char *b, size_t n)
+extern char *PE_boot_args(void);
+
+static bool is_arg_sep(char c)
 {
-    while (n > 0 && *a && *b) {
-        if (*a != *b || *a == ':' || *b == ':') return false;
-        ++a; ++b; --n;
-    }
-    return n == 0;
+    return c == ' ' || c == '\t' || c == '\0';
 }
-static bool has_flag(const char *args, const char *arg)
+
+static bool has_boot_arg_flag(const char *key, const char *flag)
 {
-    if (arg[0] == '-' || arg[0] == '+') {
-        size_t n = strlen(arg);
-        for (const char *p = args; *p; ++p) {
-            if ((p == args || p[-1] == ':') && (p[n] == 0 || p[n] == ':')
-                    && eql_flag(p, arg, n)) {
-                return true;
+    const char *args = PE_boot_args();
+    if (!args) return false;
+
+    size_t key_len = strlen(key);
+    size_t flag_len = strlen(flag);
+
+    while (*args) {
+        while (*args == ' ' || *args == '\t') args++;
+        if (!*args) break;
+
+        if (strncmp(args, key, key_len) == 0 && args[key_len] == '=') {
+            const char *v = args + key_len + 1;
+            while (!is_arg_sep(*v)) {
+                if ((v == args + key_len + 1 || v[-1] == ':') &&
+                    strncmp(v, flag, flag_len) == 0 &&
+                    (v[flag_len] == ':' || is_arg_sep(v[flag_len]))) {
+                    return true;
+                }
+                v++;
             }
+            args = v;
+        } else {
+            while (*args && !is_arg_sep(*args)) args++;
         }
     }
     return false;
@@ -231,37 +246,16 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     int ret = -1;
 
     // GoodbyeBigSlow=<flags>  // "-": disable; "+": enable
-#define BOOT_ARGS_SIZE sizeof("-turbo:-speedstep")
-    // https://github.com/apple/darwin-xnu/blob/main/pexpert/gen/bootargs.c
-    // XXX: better use own parser if this kext is needed for macos < v10.11.6
-    // PE_parse_boot_argn(<key>, arg_ptr, arg_size) => matched?
-    //     argument (the part before "=" is compared with <key>)
-    //         boolean: (?P<key>-[^\x09\x20=]*)(=[^\x09\x20]*)?
-    //         key=val: (?P<key>[^\x09\x20\-=]*)=(?P<val>[^\x09\x20]*)
-    //         skipped: not -* nor *=*
-    // if boot-arg is boolean
-    // then *(intN_t *)arg_ptr = 1
-    // else if <key> begins with "_"
-    // then strlcpy(arg_ptr, <val>, max(16, arg_size - 1))  // forced & unsafe
-    // else if <val> is (+/-) 0xHHHH... 0b1010... 0755... (k/K/m/M/g/G)
-    // then *(intN_t *)arg_ptr = integer(<val>)  // N = max(arg_size * 8, 64)
-    // else strlcpy(arg_ptr, <val>, arg_size - 1)
-    // return true after the first match; no copy/assignment if arg_size is 0
-    char boot_args[BOOT_ARGS_SIZE];
-
     // FIXME: CPU model and MSR read/write permission not checked
-    if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
-        boot_args[BOOT_ARGS_SIZE - 1] = 0;
-        if (has_flag(boot_args, "-turbo")) {
-            DBLogStatus("Disabling Turbo Boost", -1);
-            ret = disable_turbo();
-            DBLogStatus("Disabling Turbo Boost", ret);
-        }
-        if (has_flag(boot_args, "-speedstep")) {
-            DBLogStatus("Disabling SpeedStep", -1);
-            ret = disable_speedstep();
-            DBLogStatus("Disabling SpeedStep", ret);
-        }
+    if (has_boot_arg_flag("GoodbyeBigSlow", "-turbo")) {
+        DBLogStatus("Disabling Turbo Boost", -1);
+        ret = disable_turbo();
+        DBLogStatus("Disabling Turbo Boost", ret);
+    }
+    if (has_boot_arg_flag("GoodbyeBigSlow", "-speedstep")) {
+        DBLogStatus("Disabling SpeedStep", -1);
+        ret = disable_speedstep();
+        DBLogStatus("Disabling SpeedStep", ret);
     }
 
     DBLogStatus("De-asserting Processor Hot", -1);
