@@ -7,6 +7,7 @@
 #include "GoodbyeBigSlow.hpp"
 
 OSDefineMetaClassAndStructors(GoodbyeBigSlow, IOService)
+OSDefineMetaClassAndStructors(GoodbyeBigSlow_NoHardPLimits, GoodbyeBigSlow)
 
 #define super IOService
 
