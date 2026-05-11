@@ -121,7 +121,12 @@ static bool deassert_prochot(void)
 
 static bool disable_turbo(void)
 {
-    uint32_t registers[4] = {[eax]=6, [ebx]=0, [ecx]=0, [edx]=0};
+    uint32_t registers[4];
+
+    registers[eax] = 6;
+    registers[ebx] = 0;
+    registers[ecx] = 0;
+    registers[edx] = 0;
     cpuid(registers);
 
     if (registers[eax] & (1 << 1)) {
@@ -129,10 +134,16 @@ static bool disable_turbo(void)
         uint64_t new_bits = old_bits | kMsrDisableTurboBoost;
 
         if (old_bits != new_bits) {
-            // XXX: CPUID.06H:EAX[1] => 0
             wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
             IOSleep(1);
-            return rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost;
+
+            registers[eax] = 6;
+            registers[ebx] = 0;
+            registers[ecx] = 0;
+            registers[edx] = 0;
+            cpuid(registers);
+
+            return !(registers[eax] & (1 << 1));
         }
     }
     return true;
