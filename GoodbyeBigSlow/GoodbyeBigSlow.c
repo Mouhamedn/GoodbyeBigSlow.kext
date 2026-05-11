@@ -24,6 +24,19 @@
 extern "C" {
 #endif
 
+#ifndef MSR_IA32_PERF_STS
+#define MSR_IA32_PERF_STS 0x198
+#endif
+#ifndef MSR_IA32_PERF_CTL
+#define MSR_IA32_PERF_CTL 0x199
+#endif
+#ifndef IA32_PM_ENABLE
+#define IA32_PM_ENABLE 0x770
+#endif
+#ifndef IA32_HWP_REQUEST
+#define IA32_HWP_REQUEST 0x774
+#endif
+
 // https://developer.apple.com/documentation/kernel/1576460-osincrementatomic
 // https://lwn.net/Articles/793253/
 #define VOLATILE_ACCESS(x) (*((volatile __typeof__(x) *)&(x)))
@@ -297,6 +310,129 @@ __private_extern__ kmod_start_func_t *_realmain = dummy;
 __private_extern__ kmod_stop_func_t  *_antimain = dummy;
 __private_extern__ int _kext_apple_cc = __APPLE_CC__;
 #endif // XCODE_OFF
+
+struct msr_args {
+    uint32_t addr;
+    uint64_t value;
+    uint32_t op;
+};
+
+static void mp_msr_write(void *data)
+{
+    struct msr_args *args = (struct msr_args *)data;
+    uint64_t val = args->value;
+    if (args->op != kGBSMSROpWrite) {
+        uint64_t old = rdmsr64(args->addr);
+        if (args->op == kGBSMSROpAnd) val = old & args->value;
+        else if (args->op == kGBSMSROpOr) val = old | args->value;
+        else if (args->op == kGBSMSROpXor) val = old ^ args->value;
+    }
+    wrmsr64(args->addr, val);
+}
+
+// External method actions
+static kern_return_t gbs_msr_read(void *target, void *reference, IOExternalMethodArguments *arguments)
+{
+    uint32_t addr = (uint32_t)arguments->scalarInput[0];
+    arguments->scalarOutput[0] = rdmsr64(addr);
+    return KERN_SUCCESS;
+}
+
+static kern_return_t gbs_msr_write(void *target, void *reference, IOExternalMethodArguments *arguments)
+{
+    struct msr_args args;
+    args.addr = (uint32_t)arguments->scalarInput[0];
+    args.value = arguments->scalarInput[1];
+    args.op = (uint32_t)arguments->scalarInput[2];
+    uint32_t mode = (uint32_t)arguments->scalarInput[3];
+
+    if (mode == kGBSMSRModeAll) {
+        mp_rendezvous_no_intrs(mp_msr_write, &args);
+    } else {
+        mp_msr_write(&args);
+    }
+    return KERN_SUCCESS;
+}
+
+static kern_return_t gbs_plimit(void *target, void *reference, IOExternalMethodArguments *arguments)
+{
+    // Mock implementation for plimit
+    // 0x199 MSR_IA32_PERF_CTL
+    uint64_t frequency = arguments->scalarInput[0];
+    struct msr_args args = {MSR_IA32_PERF_CTL, (frequency / 100) << 8, kGBSMSROpWrite};
+    mp_rendezvous_no_intrs(mp_msr_write, &args);
+    return KERN_SUCCESS;
+}
+
+static kern_return_t gbs_gpu_frequency(void *target, void *reference, IOExternalMethodArguments *arguments)
+{
+    // GPU frequency control on some Intel CPUs (e.g. Broadwell+)
+    // can be influenced by MSR_PKG_POWER_LIMIT (0x610)
+    // but usually it's handled via MCHBAR MMIO or specific MSRs if available.
+    // For now, we provide a placeholder that could be extended.
+    uint64_t frequency = arguments->scalarInput[0];
+    (void)frequency;
+    return KERN_SUCCESS;
+}
+
+static kern_return_t gbs_cpu_frequency(void *target, void *reference, IOExternalMethodArguments *arguments)
+{
+    uint64_t frequency = arguments->scalarInput[0];
+    // Convert MHz to ratio (100MHz bus)
+    uint64_t ratio = frequency / 100;
+    struct msr_args args = {MSR_IA32_PERF_CTL, (ratio << 8), kGBSMSROpWrite};
+    mp_rendezvous_no_intrs(mp_msr_write, &args);
+    return KERN_SUCCESS;
+}
+
+static kern_return_t gbs_cpu_idle(void *target, void *reference, IOExternalMethodArguments *arguments)
+{
+    // Package C-State limit control (0xE2)
+    // Bits 2:0 - PKG C-state limit.
+    uint64_t percent = arguments->scalarInput[0];
+    uint32_t c_state_limit = 0;
+    if (percent == 0) c_state_limit = 0; // No limit
+    else if (percent < 50) c_state_limit = 2; // e.g. C2
+    else c_state_limit = 7; // No limit or deeper states
+
+    struct msr_args args = {0xE2, c_state_limit, kGBSMSROpOr};
+    mp_rendezvous_no_intrs(mp_msr_write, &args);
+    return KERN_SUCCESS;
+}
+
+static kern_return_t gbs_cpu_hwp(void *target, void *reference, IOExternalMethodArguments *arguments)
+{
+    uint64_t frequency = arguments->scalarInput[0];
+    // Enable HWP if not enabled
+    uint64_t enabled = rdmsr64(IA32_PM_ENABLE);
+    if (!(enabled & 1)) {
+        wrmsr64(IA32_PM_ENABLE, 1);
+    }
+    // Set HWP Request
+    // Bits 7:0 minimum, 15:8 maximum, 23:16 desired
+    uint64_t ratio = frequency / 100;
+    uint64_t val = (ratio << 16) | (ratio << 8) | ratio;
+    struct msr_args args = {IA32_HWP_REQUEST, val, kGBSMSROpWrite};
+    mp_rendezvous_no_intrs(mp_msr_write, &args);
+    return KERN_SUCCESS;
+}
+
+static kern_return_t gbs_voltage(void *target, void *reference, IOExternalMethodArguments *arguments)
+{
+    // Voltage control via MSR 0x150 (OC_MAILBOX)
+    // This is highly dangerous and model-specific.
+    // Basic interface for Haswell+
+    uint64_t min_vol = arguments->scalarInput[0]; // in mV
+    uint64_t max_vol = arguments->scalarInput[1]; // in mV
+    (void)min_vol; (void)max_vol;
+
+    // Example sequence (not active for safety):
+    // 1. Write command to 0x150
+    // uint64_t cmd = ...;
+    // wrmsr64(0x150, cmd);
+
+    return KERN_SUCCESS;
+}
 
 #ifdef __cplusplus
 } // extern "C"
