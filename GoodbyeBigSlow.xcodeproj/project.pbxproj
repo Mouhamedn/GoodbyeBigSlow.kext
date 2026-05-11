@@ -7,15 +7,54 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3D63F6A927AF94190089B0B6 /* X86PlatformShim.kext in PlugIns */ = {isa = PBXBuildFile; fileRef = 3D63F6A027AF94190089B0B6 /* X86PlatformShim.kext */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		3D63F69627AF94190089B0B6 /* GoodbyeBigSlow.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 3D63F69527AF94190089B0B6 /* GoodbyeBigSlow.hpp */; };
 		3D63F69827AF94190089B0B6 /* GoodbyeBigSlow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3D63F69727AF94190089B0B6 /* GoodbyeBigSlow.cpp */; };
+		3D63F6AA27AF94190089B0B6 /* X86PlatformShim.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3D63F6A127AF94190089B0B6 /* X86PlatformShim.plist */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3D63F6A727AF94190089B0B6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3D63F68927AF94190089B0B6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3D63F6A327AF94190089B0B6;
+			remoteInfo = X86PlatformShim;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		3D63F6A227AF94190089B0B6 /* PlugIns */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				3D63F6A927AF94190089B0B6 /* X86PlatformShim.kext in PlugIns */,
+			);
+			name = PlugIns;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3D63F6AB27AF94190089B0B6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3D63F6AA27AF94190089B0B6 /* X86PlatformShim.plist in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		3D63F69227AF94190089B0B6 /* GoodbyeBigSlow.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GoodbyeBigSlow.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		3D63F69527AF94190089B0B6 /* GoodbyeBigSlow.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = GoodbyeBigSlow.hpp; sourceTree = "<group>"; };
 		3D63F69727AF94190089B0B6 /* GoodbyeBigSlow.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GoodbyeBigSlow.cpp; sourceTree = "<group>"; };
 		3D63F69927AF94190089B0B6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3D63F6A027AF94190089B0B6 /* X86PlatformShim.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = X86PlatformShim.kext; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D63F6A127AF94190089B0B6 /* X86PlatformShim.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = X86PlatformShim.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +80,7 @@
 			isa = PBXGroup;
 			children = (
 				3D63F69227AF94190089B0B6 /* GoodbyeBigSlow.kext */,
+				3D63F6A027AF94190089B0B6 /* X86PlatformShim.kext */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -51,6 +91,7 @@
 				3D63F69527AF94190089B0B6 /* GoodbyeBigSlow.hpp */,
 				3D63F69727AF94190089B0B6 /* GoodbyeBigSlow.cpp */,
 				3D63F69927AF94190089B0B6 /* Info.plist */,
+				3D63F6A127AF94190089B0B6 /* X86PlatformShim.plist */,
 			);
 			path = GoodbyeBigSlow;
 			sourceTree = "<group>";
@@ -77,17 +118,42 @@
 				3D63F68E27AF94190089B0B6 /* Sources */,
 				3D63F68F27AF94190089B0B6 /* Frameworks */,
 				3D63F69027AF94190089B0B6 /* Resources */,
+				3D63F6A227AF94190089B0B6 /* PlugIns */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				3D63F6A827AF94190089B0B6 /* PBXTargetDependency */,
 			);
 			name = GoodbyeBigSlow;
 			productName = GoodbyeBigSlow;
 			productReference = 3D63F69227AF94190089B0B6 /* GoodbyeBigSlow.kext */;
 			productType = "com.apple.product-type.kernel-extension";
 		};
+		3D63F6A327AF94190089B0B6 /* X86PlatformShim */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3D63F6A427AF94190089B0B6 /* Build configuration list for PBXNativeTarget "X86PlatformShim" */;
+			buildPhases = (
+				3D63F6AB27AF94190089B0B6 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = X86PlatformShim;
+			productName = X86PlatformShim;
+			productReference = 3D63F6A027AF94190089B0B6 /* X86PlatformShim.kext */;
+			productType = "com.apple.product-type.kernel-extension";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		3D63F6A827AF94190089B0B6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3D63F6A327AF94190089B0B6 /* X86PlatformShim */;
+			targetProxy = 3D63F6A727AF94190089B0B6 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		3D63F68927AF94190089B0B6 /* Project object */ = {
@@ -115,6 +181,7 @@
 			projectRoot = "";
 			targets = (
 				3D63F69127AF94190089B0B6 /* GoodbyeBigSlow */,
+				3D63F6A327AF94190089B0B6 /* X86PlatformShim */,
 			);
 		};
 /* End PBXProject section */
@@ -292,6 +359,36 @@
 			};
 			name = Release;
 		};
+		3D63F6A527AF94190089B0B6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GoodbyeBigSlow/X86PlatformShim.plist;
+				MARKETING_VERSION = 2022.3.31;
+				PRODUCT_BUNDLE_IDENTIFIER = jakwings.kext.GoodbyeBigSlow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				WRAPPER_EXTENSION = kext;
+			};
+			name = Debug;
+		};
+		3D63F6A627AF94190089B0B6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GoodbyeBigSlow/X86PlatformShim.plist;
+				MARKETING_VERSION = 2022.3.31;
+				PRODUCT_BUNDLE_IDENTIFIER = jakwings.kext.GoodbyeBigSlow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				WRAPPER_EXTENSION = kext;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -309,6 +406,15 @@
 			buildConfigurations = (
 				3D63F69D27AF94190089B0B6 /* Debug */,
 				3D63F69E27AF94190089B0B6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3D63F6A427AF94190089B0B6 /* Build configuration list for PBXNativeTarget "X86PlatformShim" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3D63F6A527AF94190089B0B6 /* Debug */,
+				3D63F6A627AF94190089B0B6 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

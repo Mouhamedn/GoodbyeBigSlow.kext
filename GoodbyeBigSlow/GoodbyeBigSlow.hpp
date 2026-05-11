@@ -10,3 +10,8 @@ public:
     virtual bool start(IOService* provider) override;
     virtual void stop(IOService* provider) override;
 };
+
+class GoodbyeBigSlow_NoHardPLimits : public GoodbyeBigSlow
+{
+OSDeclareDefaultStructors(GoodbyeBigSlow_NoHardPLimits)
+};
