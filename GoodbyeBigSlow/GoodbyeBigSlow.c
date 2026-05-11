@@ -38,7 +38,9 @@ const uint64_t kMsrEnableProcHot = 1;
 #define MSR_IA32_MISC_ENABLE 0x1A0
 #endif
 const uint64_t kMsrEnableSpeedStep = 1ULL << 16;
+const uint64_t kMsrLockSpeedStep = 1ULL << 20;
 const uint64_t kMsrDisableTurboBoost = 1ULL << 38;
+
 
 #ifndef MSR_IA32_PACKAGE_THERM_STATUS
 #define MSR_IA32_PACKAGE_THERM_STATUS 0x1B1
@@ -124,16 +126,19 @@ static bool disable_turbo(void)
     uint32_t registers[4] = {[eax]=6, [ebx]=0, [ecx]=0, [edx]=0};
     cpuid(registers);
 
-    if (registers[eax] & (1 << 1)) {
-        uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
-        uint64_t new_bits = old_bits | kMsrDisableTurboBoost;
+    if (!(registers[eax] & (1 << 1))) {
+        DBLog("Turbo Boost not supported");
+        return true;
+    }
 
-        if (old_bits != new_bits) {
-            // XXX: CPUID.06H:EAX[1] => 0
-            wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
-            IOSleep(1);
-            return rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost;
-        }
+    uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
+    uint64_t new_bits = old_bits | kMsrDisableTurboBoost;
+
+    if (old_bits != new_bits) {
+        // XXX: CPUID.06H:EAX[1] => 0
+        wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
+        IOSleep(1);
+        return rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost;
     }
     return true;
 }
@@ -143,15 +148,23 @@ static bool disable_speedstep(void)
     uint32_t registers[4] = {[eax]=1, [ebx]=0, [ecx]=0, [edx]=0};
     cpuid(registers);
 
-    if (registers[ecx] & (1 << 7)) {
-        uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
-        uint64_t new_bits = old_bits & ~kMsrEnableSpeedStep;
+    if (!(registers[ecx] & (1 << 7))) {
+        DBLog("SpeedStep not supported");
+        return true;
+    }
 
-        if (old_bits != new_bits) {
-            wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
-            IOSleep(1);
-            return !(rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrEnableSpeedStep);
-        }
+    if (rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrLockSpeedStep) {
+        DBLog("SpeedStep locked");
+        return false;
+    }
+
+    uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
+    uint64_t new_bits = old_bits & ~kMsrEnableSpeedStep;
+
+    if (old_bits != new_bits) {
+        wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
+        IOSleep(1);
+        return !(rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrEnableSpeedStep);
     }
     return true;
 }
@@ -178,6 +191,59 @@ static bool has_flag(const char *args, const char *arg)
     return false;
 }
 
+static bool is_xeon(void)
+{
+    uint32_t registers[4] = {0};
+    char brand[48] = {0};
+
+    registers[eax] = 0x80000000;
+    cpuid(registers);
+    if (registers[eax] < 0x80000004) return false;
+
+    for (uint32_t i = 0; i < 3; ++i) {
+        registers[eax] = 0x80000002 + i;
+        cpuid(registers);
+        memcpy(brand + i * 16, registers, 16);
+    }
+
+    for (size_t i = 0; i <= 48 - 4; ++i) {
+        if ((brand[i] == 'X' || brand[i] == 'x') &&
+            (brand[i+1] == 'E' || brand[i+1] == 'e') &&
+            (brand[i+2] == 'O' || brand[i+2] == 'o') &&
+            (brand[i+3] == 'N' || brand[i+3] == 'n')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool is_model_supported(uint32_t model)
+{
+    switch (model) {
+        case 0x1A: case 0x1E: case 0x1F: case 0x2E: // Nehalem
+        case 0x25: case 0x2C: case 0x2F:           // Westmere
+        case 0x2A: case 0x2D:                       // Sandy Bridge
+        case 0x3A: case 0x3E:                       // Ivy Bridge
+        case 0x3C: case 0x45: case 0x46:           // Haswell
+        case 0x3F:                                  // Haswell-E
+        case 0x3D: case 0x47: case 0x4F: case 0x56: // Broadwell
+        case 0x4E: case 0x5E: case 0x55:           // Skylake
+        case 0x8E: case 0x9E:                       // Kaby/Coffee Lake
+        case 0x66:                                  // Cannon Lake
+        case 0xA5: case 0xA6:                       // Comet Lake
+        case 0x7D: case 0x7E:                       // Ice Lake
+        case 0x8C: case 0x8D:                       // Tiger Lake
+        case 0x6A: case 0x6C:                       // Ice Lake Xeon
+        case 0x97: case 0x9A: case 0xBF:           // Alder Lake
+        case 0xB7: case 0xBA:                       // Raptor Lake
+        case 0x5C: case 0x7A:                       // Goldmont
+        case 0x86: case 0x96: case 0x9C:           // Tremont
+            return true;
+        default:
+            return false;
+    }
+}
+
 static bool using_targeted_intel_cpu(void)
 {
     uint32_t registers[4] = {[eax]=0x00, [ebx]=0xFF, [ecx]=0xFF, [edx]=0xFF};
@@ -193,13 +259,23 @@ static bool using_targeted_intel_cpu(void)
     if (GenuineIntel) {
         registers[eax] = 0x01;
         cpuid(registers);
-        // check cpu family but not model
-        if (((registers[eax] >> 8) & 0x0F) == 0x06) {
+        uint32_t signature = registers[eax];
+        uint32_t family = (signature >> 8) & 0x0F;
+        uint32_t model = (signature >> 4) & 0x0F;
+
+        if (family == 0x06 || family == 0x0F) {
+            model += ((signature >> 16) & 0x0F) << 4;
+        }
+
+        if (family == 0x06 && is_model_supported(model)) {
+            if (model == 0x4F && !is_xeon()) {
+                return false;
+            }
             // supports package thermal management (PTM) ?
             if (maxval >= 0x06) {
                 registers[eax] = 0x06;
                 cpuid(registers);
-                return registers[eax] & (1 << 6);
+                return (registers[eax] & (1 << 6));
             }
         }
     }
@@ -249,7 +325,6 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     // return true after the first match; no copy/assignment if arg_size is 0
     char boot_args[BOOT_ARGS_SIZE];
 
-    // FIXME: CPU model and MSR read/write permission not checked
     if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
         boot_args[BOOT_ARGS_SIZE - 1] = 0;
         if (has_flag(boot_args, "-turbo")) {
