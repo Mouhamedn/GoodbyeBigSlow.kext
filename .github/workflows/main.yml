@@ -10,12 +10,12 @@ on: [push, pull_request]
 
 env:
   IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && github.repository == 'jakwings/GoodbyeBigSlow.kext' }}
-  VERSION_MIN: '10.11'
-  SDK_HASH: d080fc672d94f95eb54651c37ede80f61761ce4c91f87061e11a20222c8d00c8
+  VERSION_MIN: '10.13'
+  SDK_HASH: 1d2984acab2900c73d076fbd40750035359ee1abe1a6c61eafcd218f68923a5a
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Reuse cached files
         uses: actions/cache@v3
