@@ -3,6 +3,7 @@
 \*==========================================================================*/
 
 #include <IOKit/IOLib.h>
+#include <i386/proc_reg.h>
 #include "GoodbyeBigSlow.c"
 #include "GoodbyeBigSlow.hpp"
 #include "GoodbyeBigSlowShared.h"
@@ -57,7 +58,7 @@ IOReturn GoodbyeBigSlow::newUserClient(task_t owningTask, void* securityID, UInt
     GoodbyeBigSlowUserClient* client = NULL;
 
     // Security check: Only allow root to open a user client
-    if (clientHasPrivilege(securityID, kIOClientPrivilegeAdministrator) != kIOReturnSuccess) {
+    if (IOUserClient::clientHasPrivilege(securityID, kIOClientPrivilegeAdministrator) != kIOReturnSuccess) {
         return kIOReturnNotPrivileged;
     }
 
@@ -140,10 +141,10 @@ IOReturn GoodbyeBigSlowUserClient::externalMethod(uint32_t selector, IOExternalM
         return kIOReturnUnsupported;
     }
 
-    const GoodbyeBigSlowMSRArgs* input = (const GoodbyeBigSlowMSRArgs*)arguments->structInput;
-    GoodbyeBigSlowMSRArgs* output = (GoodbyeBigSlowMSRArgs*)arguments->structOutput;
+    const GoodbyeBigSlowMSRArgs* input = (const GoodbyeBigSlowMSRArgs*)arguments->structureInput;
+    GoodbyeBigSlowMSRArgs* output = (GoodbyeBigSlowMSRArgs*)arguments->structureOutput;
 
-    if (!input || arguments->structInputSize < sizeof(GoodbyeBigSlowMSRArgs)) {
+    if (!input || arguments->structureInputSize < sizeof(GoodbyeBigSlowMSRArgs)) {
         return kIOReturnBadArgument;
     }
 
@@ -153,7 +154,7 @@ IOReturn GoodbyeBigSlowUserClient::externalMethod(uint32_t selector, IOExternalM
 
     switch (selector) {
         case kGoodbyeBigSlowReadMSR:
-            if (!output || arguments->structOutputSize < sizeof(GoodbyeBigSlowMSRArgs)) {
+            if (!output || arguments->structureOutputSize < sizeof(GoodbyeBigSlowMSRArgs)) {
                 return kIOReturnBadArgument;
             }
             output->index = input->index;
