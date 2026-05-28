@@ -51,6 +51,7 @@ const uint64_t kMsrThermalStatusMask = 0x28A;  // 0b1010001010
 // https://github.com/apple/darwin-xnu/blob/main/osfmk/i386/mp.h
 // Perform actions on all processor cores.
 extern void mp_rendezvous_no_intrs(void (*func)(void *), void *arg);
+extern char *PE_boot_args(void);
 
 // ALERT: Toggling PROCHOT more than once in ~2 ms period can result in
 //        constant Pn state (Low Frequency Mode) of the processor.
@@ -156,27 +157,39 @@ static bool disable_speedstep(void)
     return true;
 }
 
-static bool eql_flag(const char *a, const char *b, size_t n)
+static inline bool is_arg_sep(char c)
 {
-    while (n > 0 && *a && *b) {
-        if (*a != *b || *a == ':' || *b == ':') return false;
-        ++a; ++b; --n;
-    }
-    return n == 0;
+    return c == ' ' || c == '\t' || c == '\0';
 }
-static bool has_flag(const char *args, const char *arg)
+
+static bool has_boot_arg_flag(const char *key, const char *flag)
 {
-    if (arg[0] == '-' || arg[0] == '+') {
-        size_t n = strlen(arg);
-        for (const char *p = args; *p; ++p) {
-            if ((p == args || p[-1] == ':') && (p[n] == 0 || p[n] == ':')
-                    && eql_flag(p, arg, n)) {
-                return true;
+    const char *p = PE_boot_args();
+    if (!p) return false;
+
+    size_t key_len = strlen(key);
+    size_t flag_len = strlen(flag);
+
+    while (*p) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+
+        if (strncmp(p, key, key_len) == 0 && p[key_len] == '=') {
+            const char *v = p + key_len + 1;
+            while (!is_arg_sep(*v)) {
+                if (strncmp(v, flag, flag_len) == 0 && (is_arg_sep(v[flag_len]) || v[flag_len] == ':')) {
+                    return true;
+                }
+                while (!is_arg_sep(*v) && *v != ':') v++;
+                if (*v == ':') v++;
             }
         }
+
+        while (!is_arg_sep(*p)) p++;
     }
     return false;
 }
+
 
 static bool using_targeted_intel_cpu(void)
 {
@@ -231,7 +244,6 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     int ret = -1;
 
     // GoodbyeBigSlow=<flags>  // "-": disable; "+": enable
-#define BOOT_ARGS_SIZE sizeof("-turbo:-speedstep")
     // https://github.com/apple/darwin-xnu/blob/main/pexpert/gen/bootargs.c
     // XXX: better use own parser if this kext is needed for macos < v10.11.6
     // PE_parse_boot_argn(<key>, arg_ptr, arg_size) => matched?
@@ -247,21 +259,17 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     // then *(intN_t *)arg_ptr = integer(<val>)  // N = max(arg_size * 8, 64)
     // else strlcpy(arg_ptr, <val>, arg_size - 1)
     // return true after the first match; no copy/assignment if arg_size is 0
-    char boot_args[BOOT_ARGS_SIZE];
 
     // FIXME: CPU model and MSR read/write permission not checked
-    if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
-        boot_args[BOOT_ARGS_SIZE - 1] = 0;
-        if (has_flag(boot_args, "-turbo")) {
-            DBLogStatus("Disabling Turbo Boost", -1);
-            ret = disable_turbo();
-            DBLogStatus("Disabling Turbo Boost", ret);
-        }
-        if (has_flag(boot_args, "-speedstep")) {
-            DBLogStatus("Disabling SpeedStep", -1);
-            ret = disable_speedstep();
-            DBLogStatus("Disabling SpeedStep", ret);
-        }
+    if (has_boot_arg_flag("GoodbyeBigSlow", "-turbo")) {
+        DBLogStatus("Disabling Turbo Boost", -1);
+        ret = disable_turbo();
+        DBLogStatus("Disabling Turbo Boost", ret);
+    }
+    if (has_boot_arg_flag("GoodbyeBigSlow", "-speedstep")) {
+        DBLogStatus("Disabling SpeedStep", -1);
+        ret = disable_speedstep();
+        DBLogStatus("Disabling SpeedStep", ret);
     }
 
     DBLogStatus("De-asserting Processor Hot", -1);
