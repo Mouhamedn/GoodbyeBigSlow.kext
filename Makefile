@@ -80,7 +80,11 @@ load:
 unload:
 	sudo kextunload -v 4 -b $(KEXT_ID)
 
-clean:
-	rm -v -R -f build
+test:
+	$(CC) -Itests/include tests/test_eql_flag.c -o tests/test_eql_flag
+	./tests/test_eql_flag
 
-.PHONEY: all install uninstall clean
+clean:
+	rm -v -R -f build tests/test_eql_flag
+
+.PHONEY: all install uninstall clean test
