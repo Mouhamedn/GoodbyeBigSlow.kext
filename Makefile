@@ -80,7 +80,11 @@ load:
 unload:
 	sudo kextunload -v 4 -b $(KEXT_ID)
 
-clean:
-	rm -v -R -f build
+test:
+	$(CC) -Itests/mock -O2 tests/test_targeted_cpu.c -o tests/test_targeted_cpu
+	./tests/test_targeted_cpu
 
-.PHONEY: all install uninstall clean
+clean:
+	rm -v -R -f build tests/test_targeted_cpu
+
+.PHONEY: all install uninstall clean test
