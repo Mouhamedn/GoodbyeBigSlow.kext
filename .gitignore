@@ -1,0 +1,4 @@
+build/
+tests/test_kext_start
+*.o
+*.out

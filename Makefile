@@ -83,4 +83,8 @@ unload:
 clean:
 	rm -v -R -f build
 
-.PHONEY: all install uninstall clean
+test:
+	$(CC) -Itests/mock -I. tests/test_kext_start.c -o tests/test_kext_start
+	./tests/test_kext_start
+
+.PHONEY: all install uninstall clean test
