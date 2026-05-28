@@ -232,21 +232,21 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
 
     // GoodbyeBigSlow=<flags>  // "-": disable; "+": enable
 #define BOOT_ARGS_SIZE sizeof("-turbo:-speedstep")
-    // https://github.com/apple/darwin-xnu/blob/main/pexpert/gen/bootargs.c
-    // XXX: better use own parser if this kext is needed for macos < v10.11.6
-    // PE_parse_boot_argn(<key>, arg_ptr, arg_size) => matched?
-    //     argument (the part before "=" is compared with <key>)
-    //         boolean: (?P<key>-[^\x09\x20=]*)(=[^\x09\x20]*)?
-    //         key=val: (?P<key>[^\x09\x20\-=]*)=(?P<val>[^\x09\x20]*)
-    //         skipped: not -* nor *=*
-    // if boot-arg is boolean
-    // then *(intN_t *)arg_ptr = 1
-    // else if <key> begins with "_"
-    // then strlcpy(arg_ptr, <val>, max(16, arg_size - 1))  // forced & unsafe
-    // else if <val> is (+/-) 0xHHHH... 0b1010... 0755... (k/K/m/M/g/G)
-    // then *(intN_t *)arg_ptr = integer(<val>)  // N = max(arg_size * 8, 64)
-    // else strlcpy(arg_ptr, <val>, arg_size - 1)
-    // return true after the first match; no copy/assignment if arg_size is 0
+    /*
+     * PE_parse_boot_argn(key, arg_ptr, arg_size)
+     *
+     * Parses boot-args for a matching key and stores the result.
+     * Reference: https://github.com/apple/darwin-xnu/blob/main/pexpert/gen/bootargs.c
+     *
+     * Logic:
+     * - Boolean: -key[=val] -> sets *arg_ptr = 1
+     * - Key-value: key=val
+     *   - If key starts with '_': forced & unsafe string copy
+     *   - If val is numeric (0x, 0b, octal, k/m/g): sets *arg_ptr = integer(val)
+     *   - Otherwise: string copy to arg_ptr
+     *
+     * Returns true on first match. XXX: macOS < 10.11.6 may need a custom parser.
+     */
     char boot_args[BOOT_ARGS_SIZE];
 
     // FIXME: CPU model and MSR read/write permission not checked
