@@ -38,6 +38,7 @@ const uint64_t kMsrEnableProcHot = 1;
 #define MSR_IA32_MISC_ENABLE 0x1A0
 #endif
 const uint64_t kMsrEnableSpeedStep = 1ULL << 16;
+const uint64_t kMsrSpeedStepLock = 1ULL << 20;
 const uint64_t kMsrDisableTurboBoost = 1ULL << 38;
 
 #ifndef MSR_IA32_PACKAGE_THERM_STATUS
@@ -64,7 +65,7 @@ static void mp_deassert_prochot(void *data)
     // hopefully not to cause invalid write and the black screen of death
     if (old_bits != new_bits) {
         wrmsr64(MSR_IA32_POWER_CTL, new_bits);
-        IOSleep(1);
+        IODelay(1000);
         if (!(rdmsr64(MSR_IA32_POWER_CTL) & kMsrEnableProcHot)) {
             OSIncrementAtomic64(VOLATILE_ACCESS(disabled));
         }
@@ -145,6 +146,10 @@ static bool disable_speedstep(void)
 
     if (registers[ecx] & (1 << 7)) {
         uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
+        if (old_bits & kMsrSpeedStepLock) {
+            return false;
+        }
+
         uint64_t new_bits = old_bits & ~kMsrEnableSpeedStep;
 
         if (old_bits != new_bits) {
@@ -178,6 +183,72 @@ static bool has_flag(const char *args, const char *arg)
     return false;
 }
 
+static uint32_t get_display_family(uint32_t signature)
+{
+    uint32_t family = (signature >> 8) & 0x0F;
+    if (family == 0x0F) {
+        family += (signature >> 20) & 0xFF;
+    }
+    return family;
+}
+
+static uint32_t get_display_model(uint32_t signature)
+{
+    uint32_t family = (signature >> 8) & 0x0F;
+    uint32_t model = (signature >> 4) & 0x0F;
+    if (family == 0x06 || family == 0x0F) {
+        model += ((signature >> 16) & 0x0F) << 4;
+    }
+    return model;
+}
+
+static bool is_xeon(void)
+{
+    uint32_t registers[4];
+    char brand[49];
+
+    registers[eax] = 0x80000000;
+    cpuid(registers);
+    if (registers[eax] < 0x80000004) return false;
+
+    for (uint32_t i = 0; i < 3; ++i) {
+        registers[eax] = 0x80000002 + i;
+        cpuid(registers);
+        memcpy(brand + i * 16, registers, sizeof(registers));
+    }
+    brand[48] = 0;
+
+    for (size_t i = 0; i <= sizeof(brand) - 4; ++i) {
+        if ((brand[i] | 0x20) == 'x' &&
+            (brand[i+1] | 0x20) == 'e' &&
+            (brand[i+2] | 0x20) == 'o' &&
+            (brand[i+3] | 0x20) == 'n') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool is_model_supported(uint32_t family, uint32_t model)
+{
+    if (family != 0x06) return false;
+
+    switch (model) {
+        case 0x1A: case 0x1E: case 0x1F: case 0x25: case 0x2A: case 0x2C:
+        case 0x2D: case 0x2E: case 0x2F: case 0x3A: case 0x3C: case 0x3D:
+        case 0x3E: case 0x3F: case 0x45: case 0x46: case 0x47: case 0x4E:
+        case 0x4F: // Xeon
+            if (!is_xeon()) return false;
+            return true;
+        case 0x55: case 0x56: case 0x5C: case 0x5E: case 0x66: case 0x6A:
+        case 0x6C: case 0x7A: case 0x7D: case 0x7E: case 0x86: case 0x8C:
+        case 0x8D: case 0x8E: case 0x96: case 0x97: case 0x9A: case 0x9C:
+        case 0x9E: case 0xA5: case 0xA6: case 0xB7: case 0xBA: case 0xBF:
+            return true;
+    }
+    return false;
+}
+
 static bool using_targeted_intel_cpu(void)
 {
     uint32_t registers[4] = {[eax]=0x00, [ebx]=0xFF, [ecx]=0xFF, [edx]=0xFF};
@@ -193,13 +264,17 @@ static bool using_targeted_intel_cpu(void)
     if (GenuineIntel) {
         registers[eax] = 0x01;
         cpuid(registers);
-        // check cpu family but not model
-        if (((registers[eax] >> 8) & 0x0F) == 0x06) {
-            // supports package thermal management (PTM) ?
+
+        uint32_t signature = registers[eax];
+        uint32_t family = get_display_family(signature);
+        uint32_t model = get_display_model(signature);
+
+        if (is_model_supported(family, model)) {
+            // supports bi-directional PROCHOT (bit 0) and package thermal management (bit 6)?
             if (maxval >= 0x06) {
                 registers[eax] = 0x06;
                 cpuid(registers);
-                return registers[eax] & (1 << 6);
+                return (registers[eax] & (1 << 0)) && (registers[eax] & (1 << 6));
             }
         }
     }
@@ -249,7 +324,6 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     // return true after the first match; no copy/assignment if arg_size is 0
     char boot_args[BOOT_ARGS_SIZE];
 
-    // FIXME: CPU model and MSR read/write permission not checked
     if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
         boot_args[BOOT_ARGS_SIZE - 1] = 0;
         if (has_flag(boot_args, "-turbo")) {
