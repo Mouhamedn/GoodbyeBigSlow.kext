@@ -3,6 +3,7 @@
 \*==========================================================================*/
 
 #include <IOKit/IOLib.h>
+#include <IOKit/IOUserClient.h>
 #include "GoodbyeBigSlow.c"
 #include "GoodbyeBigSlow.hpp"
 
@@ -29,7 +30,7 @@ void GoodbyeBigSlow::free(void)
 IOService* GoodbyeBigSlow::probe(IOService* provider, SInt32* score)
 {
     DBLogStatus("Probing", -1);
-    const auto result = super::probe(provider, score);
+    const auto result = using_targeted_intel_cpu() ? super::probe(provider, score) : NULL;
     DBLogStatus("Probing", result ? 1 : 0);
     return result;
 }
@@ -38,6 +39,9 @@ bool GoodbyeBigSlow::start(IOService* provider)
 {
     DBLogStatus("Starting", -1);
     const auto result = kext_start(NULL, NULL) == KERN_SUCCESS && super::start(provider);
+    if (result) {
+        registerService();
+    }
     DBLogStatus("Starting", result ? 1 : 0);
     return result;
 }
@@ -46,4 +50,87 @@ void GoodbyeBigSlow::stop(IOService* provider)
 {
     kext_stop(NULL, NULL);
     super::stop(provider);
+}
+
+IOReturn GoodbyeBigSlow::newUserClient(task_t owningTask, void* securityID, UInt32 type, OSDictionary* properties, IOUserClient** handler)
+{
+    if (clientHasPrivilege(owningTask, kIOClientPrivilegeAdministrator) != kIOReturnSuccess) {
+        return kIOReturnNotPrivileged;
+    }
+
+    GoodbyeBigSlowUserClient* client = OSTypeAlloc(GoodbyeBigSlowUserClient);
+    if (!client) return kIOReturnNoMemory;
+
+    if (!client->initWithTask(owningTask, securityID, type, properties)) {
+        client->release();
+        return kIOReturnError;
+    }
+
+    if (!client->attach(this)) {
+        client->release();
+        return kIOReturnError;
+    }
+
+    if (!client->start(this)) {
+        client->detach(this);
+        client->release();
+        return kIOReturnError;
+    }
+
+    *handler = client;
+    return kIOReturnSuccess;
+}
+
+OSDefineMetaClassAndStructors(GoodbyeBigSlowUserClient, IOUserClient)
+
+bool GoodbyeBigSlowUserClient::initWithTask(task_t owningTask, void* securityID, UInt32 type, OSDictionary* properties)
+{
+    if (!super::initWithTask(owningTask, securityID, type, properties)) return false;
+    fTask = owningTask;
+    return true;
+}
+
+bool GoodbyeBigSlowUserClient::start(IOService* provider)
+{
+    if (!super::start(provider)) return false;
+    return true;
+}
+
+void GoodbyeBigSlowUserClient::stop(IOService* provider)
+{
+    super::stop(provider);
+}
+
+IOReturn GoodbyeBigSlowUserClient::clientClose(void)
+{
+    terminate();
+    return kIOReturnSuccess;
+}
+
+IOReturn GoodbyeBigSlowUserClient::externalMethod(uint32_t selector, IOExternalMethodArguments* arguments, IOExternalMethodDispatch* dispatch, OSObject* target, void* reference)
+{
+    if (selector == 0) { // rdmsr64
+        if (arguments->scalarInputCount < 1 || arguments->scalarOutputCount < 1) return kIOReturnBadArgument;
+        uint32_t msr = (uint32_t)arguments->scalarInput[0];
+        if (!is_msr_allowed(msr)) return kIOReturnNotPermitted;
+        arguments->scalarOutput[0] = rdmsr64(msr);
+        return kIOReturnSuccess;
+    } else if (selector == 1) { // wrmsr64
+        if (arguments->scalarInputCount < 2) return kIOReturnBadArgument;
+        uint32_t msr = (uint32_t)arguments->scalarInput[0];
+        uint64_t val = arguments->scalarInput[1];
+        if (!is_msr_allowed(msr)) return kIOReturnNotPermitted;
+        wrmsr_all(msr, val);
+        return kIOReturnSuccess;
+    }
+    return kIOReturnBadArgument;
+}
+
+OSDefineMetaClassAndStructors(GoodbyeBigSlow_NoHardPLimits, IOService)
+
+bool GoodbyeBigSlow_NoHardPLimits::start(IOService* provider)
+{
+    if (!super::start(provider)) return false;
+    registerService();
+    return true;
 }
