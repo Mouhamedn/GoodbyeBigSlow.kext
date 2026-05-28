@@ -247,7 +247,7 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     // then *(intN_t *)arg_ptr = integer(<val>)  // N = max(arg_size * 8, 64)
     // else strlcpy(arg_ptr, <val>, arg_size - 1)
     // return true after the first match; no copy/assignment if arg_size is 0
-    char boot_args[BOOT_ARGS_SIZE];
+    char boot_args[BOOT_ARGS_SIZE] = {0};
 
     // FIXME: CPU model and MSR read/write permission not checked
     if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
