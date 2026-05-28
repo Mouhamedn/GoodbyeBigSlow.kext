@@ -15,6 +15,14 @@ static inline void IOSleep(uint32_t ms) {
     (void)ms;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern int PE_parse_boot_argn(const char *key, void *arg_ptr, int max_len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

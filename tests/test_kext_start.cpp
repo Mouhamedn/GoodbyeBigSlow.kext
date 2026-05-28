@@ -18,6 +18,10 @@ static bool mock_boot_arg_exists = false;
 static uint64_t mock_msr_values[0x1000];
 static int mp_rendezvous_called = 0;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Mock implementations
 void cpuid(uint32_t *regs) {
     uint32_t leaf = regs[eax];
@@ -165,6 +169,10 @@ void test_supported_cpu_both_args() {
 
     printf("test_supported_cpu_both_args passed!\n");
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 int main() {
     test_unsupported_cpu();

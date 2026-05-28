@@ -8,6 +8,14 @@
 #define ecx 2
 #define edx 3
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern void cpuid(uint32_t *regs);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
