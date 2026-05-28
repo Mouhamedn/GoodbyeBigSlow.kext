@@ -27,7 +27,7 @@ void set_mock_cpuid(uint32_t leaf, uint32_t eax_val, uint32_t ebx_val, uint32_t 
 }
 
 // Mock implementation of cpuid
-void cpuid(uint32_t *registers) {
+extern "C" void cpuid(uint32_t *registers) {
     uint32_t leaf = registers[eax];
     if (leaf < MAX_CPUID_LEAF) {
         registers[eax] = mock_cpuid_results[leaf].eax;
@@ -43,18 +43,20 @@ void cpuid(uint32_t *registers) {
 }
 
 // Stubs for other kernel functions
-uint64_t rdmsr64(uint32_t msr) { return 0; }
-void wrmsr64(uint32_t msr, uint64_t val) {}
-void IOLog(const char *fmt, ...) {
+extern "C" uint64_t rdmsr64(uint32_t msr) { return 0; }
+extern "C" void wrmsr64(uint32_t msr, uint64_t val) {}
+extern "C" void IOLog(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     vprintf(fmt, args);
     va_end(args);
 }
-void IOSleep(uint32_t milliseconds) {}
-void OSIncrementAtomic64(volatile int64_t *dst) { (*dst)++; }
-void mp_rendezvous_no_intrs(void (*func)(void *), void *arg) {}
-bool PE_parse_boot_argn(const char *argName, void *argVal, int maxLen) { return false; }
+extern "C" void IOSleep(uint32_t milliseconds) {}
+extern "C" void OSIncrementAtomic64(volatile int64_t *dst) { (*dst)++; }
+extern "C" {
+    void mp_rendezvous_no_intrs(void (*func)(void *), void *arg) {}
+    bool PE_parse_boot_argn(const char *argName, void *argVal, int maxLen) { return false; }
+}
 
 // Include the source file to test the static function
 #include "../GoodbyeBigSlow/GoodbyeBigSlow.c"

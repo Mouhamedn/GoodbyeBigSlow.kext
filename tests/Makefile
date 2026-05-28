@@ -1,13 +1,13 @@
-CC = gcc
-CFLAGS = -Wall -Iinclude -D__unused="__attribute__((unused))"
+CXX = g++
+CXXFLAGS = -Wall -Iinclude -D__unused="__attribute__((unused))" -std=c++11
 
 TARGET = test_using_targeted_intel_cpu
-SRC = test_using_targeted_intel_cpu.c
+SRC = test_using_targeted_intel_cpu.cpp
 
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $@ $<
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
 test: $(TARGET)
 	./$(TARGET)

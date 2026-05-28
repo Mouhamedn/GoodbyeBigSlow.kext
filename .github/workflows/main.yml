@@ -39,6 +39,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Run unit tests
+        run: |
+          make -C tests test
+
       - name: Compile kernel extension
         run: |
           make XCODE=OFF MACOS_VERSION_MIN="${VERSION_MIN}"
