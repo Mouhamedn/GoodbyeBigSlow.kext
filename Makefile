@@ -80,7 +80,11 @@ load:
 unload:
 	sudo kextunload -v 4 -b $(KEXT_ID)
 
-clean:
-	rm -v -R -f build
+test:
+	g++ -I tests/include -I GoodbyeBigSlow tests/test_goodbyebigslow.cpp GoodbyeBigSlow/GoodbyeBigSlow.cpp -o test_goodbyebigslow
+	./test_goodbyebigslow
 
-.PHONEY: all install uninstall clean
+clean:
+	rm -v -R -f build test_goodbyebigslow
+
+.PHONY: all install uninstall clean test
