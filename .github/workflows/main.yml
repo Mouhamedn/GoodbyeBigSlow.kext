@@ -15,7 +15,7 @@ env:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Reuse cached files
         uses: actions/cache@v3
@@ -43,6 +43,13 @@ jobs:
         run: |
           make XCODE=OFF MACOS_VERSION_MIN="${VERSION_MIN}"
           make clean
+
+      - name: Run tests
+        run: |
+          make test
+
+      - name: Compile kernel extension (Xcode)
+        run: |
           grep -q "SDKROOT = macosx;" *.xcodeproj/project.pbxproj
           sed -i.bak "s/SDKROOT = macosx;/SDKROOT = macosx${VERSION_MIN};/g" *.xcodeproj/project.pbxproj
           make XCODE=ON MACOS_VERSION_MIN="${VERSION_MIN}"
