@@ -64,7 +64,7 @@ static void mp_deassert_prochot(void *data)
     // hopefully not to cause invalid write and the black screen of death
     if (old_bits != new_bits) {
         wrmsr64(MSR_IA32_POWER_CTL, new_bits);
-        IOSleep(1);
+        IODelay(1000);
         if (!(rdmsr64(MSR_IA32_POWER_CTL) & kMsrEnableProcHot)) {
             OSIncrementAtomic64(VOLATILE_ACCESS(disabled));
         }
@@ -131,7 +131,7 @@ static bool disable_turbo(void)
         if (old_bits != new_bits) {
             // XXX: CPUID.06H:EAX[1] => 0
             wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
-            IOSleep(1);
+            IODelay(1000);
             return rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost;
         }
     }
@@ -149,7 +149,7 @@ static bool disable_speedstep(void)
 
         if (old_bits != new_bits) {
             wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
-            IOSleep(1);
+            IODelay(1000);
             return !(rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrEnableSpeedStep);
         }
     }
