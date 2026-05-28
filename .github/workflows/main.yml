@@ -15,10 +15,10 @@ env:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Reuse cached files
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/Thirdparty
           key: ${{ runner.os }}-${{ env.VERSION_MIN }}
@@ -35,9 +35,13 @@ jobs:
           tar xzf ~/Thirdparty/sdk.tar.xz -C "${dir}/Developer/SDKs/"
 
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Run unit tests
+        run: |
+          make test
 
       - name: Compile kernel extension
         run: |
