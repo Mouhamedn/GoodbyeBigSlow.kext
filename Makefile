@@ -46,11 +46,11 @@ all: $(KEXT_BIN)
 
 $(KEXT_BIN): $(KEXT_DEPS) # $(PLUGIN_DIR)
 ifeq ($(XCODE),ON)
-	xcodebuild -verbose -project $(PROJ) -target GoodbyeBigSlow -configuration Release MARKETING_VERSION=$(KEXT_VERSION) PRODUCT_BUNDLE_IDENTIFIER=$(KEXT_ID) MODULE_NAME=$(KEXT_ID) MODULE_VERSION=$(KEXT_VERSION) MACOSX_DEPLOYMENT_TARGET=$(MACOS_VERSION_MIN) CODE_SIGN_IDENTITY="-"
+	xcodebuild -verbose -project $(PROJ) -target GoodbyeBigSlow -configuration Release MARKETING_VERSION=$(KEXT_VERSION) PRODUCT_BUNDLE_IDENTIFIER=$(KEXT_ID) MODULE_NAME=$(KEXT_ID) MODULE_VERSION=$(KEXT_VERSION) MACOSX_DEPLOYMENT_TARGET=$(MACOS_VERSION_MIN) CODE_SIGN_IDENTITY="-" ARCHS=x86_64
 else
 	mkdir -p $(KEXT_DIR)/Contents/MacOS
 	sed -e 's/\$$(PRODUCT_BUNDLE_IDENTIFIER)/$(KEXT_ID)/g' -e 's/\$$(MARKETING_VERSION)/$(KEXT_VERSION)/g' -e 's/\$$(MACOSX_DEPLOYMENT_TARGET)/$(MACOS_VERSION_MIN)/g' <$(NAME)/Info.plist >$(KEXT_DIR)/Contents/Info.plist
-	$(CXX) $(CFLAGS) $(CPPFLAGS) -DXCODE_OFF -DKEXT_ID=$(KEXT_ID) -DKEXT_VERSION=$(KEXT_VERSION) -nostdinc -std=c++11 -stdlib=libc++ -Os -fno-builtin -fno-exceptions -fno-rtti -fno-common -mkernel -fapple-kext -fasm-blocks -fstrict-aliasing -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT -isystem "$(shell xcrun --sdk macosx --show-sdk-path)/System/Library/Frameworks/Kernel.framework/Headers" -mmacosx-version-min=$(MACOS_VERSION_MIN) -static $(NAME)/$(NAME).cpp -o $(KEXT_BIN) -Xlinker -kext -nostdlib -lkmodc++ -lkmod -lcc_kext -pedantic -Wall -Wextra -Wno-extra-semi
+	$(CXX) $(CFLAGS) $(CPPFLAGS) -DXCODE_OFF -DKEXT_ID=$(KEXT_ID) -DKEXT_VERSION=$(KEXT_VERSION) -nostdinc -std=c++11 -stdlib=libc++ -Os -fno-builtin -fno-exceptions -fno-rtti -fno-common -mkernel -fapple-kext -fasm-blocks -fstrict-aliasing -arch x86_64 -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT -isystem "$(shell xcrun --sdk macosx --show-sdk-path)/System/Library/Frameworks/Kernel.framework/Headers" -mmacosx-version-min=$(MACOS_VERSION_MIN) -static $(NAME)/$(NAME).cpp -o $(KEXT_BIN) -Xlinker -kext -nostdlib -lkmodc++ -lkmod -lcc_kext -pedantic -Wall -Wextra -Wno-extra-semi
 endif
 	xcrun codesign --force --deep --sign "$(CODE_SIGN_IDENTITY)" --entitlements $(NAME)/entitlements.xml --timestamp=none $(KEXT_DIR)
 
