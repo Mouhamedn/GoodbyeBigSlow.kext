@@ -28,50 +28,93 @@ extern "C" {
 // https://lwn.net/Articles/793253/
 #define VOLATILE_ACCESS(x) (*((volatile __typeof__(x) *)&(x)))
 
-#ifndef MSR_IA32_POWER_CTL
-#define MSR_IA32_POWER_CTL 0x1FC
+#ifndef MSR_IA32_PLATFORM_ID
+#define MSR_IA32_PLATFORM_ID 0x17
 #endif
-// Credit to https://www.techpowerup.com/download/techpowerup-throttlestop/
-const uint64_t kMsrEnableProcHot = 1;
-
+#ifndef MSR_IA32_PERF_STS
+#define MSR_IA32_PERF_STS 0x198
+#endif
+#ifndef MSR_IA32_PERF_CTL
+#define MSR_IA32_PERF_CTL 0x199
+#endif
+#ifndef MSR_IA32_THERM_STATUS
+#define MSR_IA32_THERM_STATUS 0x19C
+#endif
 #ifndef MSR_IA32_MISC_ENABLE
 #define MSR_IA32_MISC_ENABLE 0x1A0
 #endif
-const uint64_t kMsrEnableSpeedStep = 1ULL << 16;
-const uint64_t kMsrDisableTurboBoost = 1ULL << 38;
-
 #ifndef MSR_IA32_PACKAGE_THERM_STATUS
 #define MSR_IA32_PACKAGE_THERM_STATUS 0x1B1
 #endif
-#ifndef MSR_IA32_THERM_STATUS // per core
-#define MSR_IA32_THERM_STATUS 0x19C
+#ifndef MSR_IA32_POWER_CTL
+#define MSR_IA32_POWER_CTL 0x1FC
 #endif
+
+// Credit to https://www.techpowerup.com/download/techpowerup-throttlestop/
+const uint64_t kMsrEnableProcHot = 1;
+
+const uint64_t kMsrEnableSpeedStep = 1ULL << 16;
+const uint64_t kMsrSpeedStepLock = 1ULL << 20;
+const uint64_t kMsrDisableTurboBoost = 1ULL << 38;
+
 const uint64_t kMsrThermalStatusMask = 0x28A;  // 0b1010001010
 
 // https://github.com/apple/darwin-xnu/blob/main/osfmk/i386/mp.h
 // Perform actions on all processor cores.
 extern void mp_rendezvous_no_intrs(void (*func)(void *), void *arg);
 
+static bool is_msr_allowed(uint32_t msr)
+{
+    switch (msr) {
+        case MSR_IA32_PLATFORM_ID:
+        case MSR_IA32_PERF_STS:
+        case MSR_IA32_PERF_CTL:
+        case MSR_IA32_THERM_STATUS:
+        case MSR_IA32_MISC_ENABLE:
+        case MSR_IA32_PACKAGE_THERM_STATUS:
+        case MSR_IA32_POWER_CTL:
+            return true;
+        default:
+            return false;
+    }
+}
+
+struct mp_msr_args {
+    uint32_t msr;
+    uint64_t value;
+};
+
+static void mp_wrmsr(void *data)
+{
+    struct mp_msr_args *args = (struct mp_msr_args *)data;
+    wrmsr64(args->msr, args->value);
+}
+
+static void wrmsr_all(uint32_t msr, uint64_t value)
+{
+    struct mp_msr_args args = {msr, value};
+    mp_rendezvous_no_intrs(mp_wrmsr, &args);
+}
+
 // ALERT: Toggling PROCHOT more than once in ~2 ms period can result in
 //        constant Pn state (Low Frequency Mode) of the processor.
 static void mp_deassert_prochot(void *data)
 {
-    SInt64 *cpucount = (SInt64 *)data;
-    SInt64 *disabled = (SInt64 *)data + 1;
+    SInt64 *counts = (SInt64 *)data;
     uint64_t old_bits = rdmsr64(MSR_IA32_POWER_CTL);
     uint64_t new_bits = old_bits & ~kMsrEnableProcHot;
 
     // hopefully not to cause invalid write and the black screen of death
     if (old_bits != new_bits) {
         wrmsr64(MSR_IA32_POWER_CTL, new_bits);
-        IOSleep(1);
+        IODelay(1000);
         if (!(rdmsr64(MSR_IA32_POWER_CTL) & kMsrEnableProcHot)) {
-            OSIncrementAtomic64(VOLATILE_ACCESS(disabled));
+            OSIncrementAtomic64(&counts[1]);
         }
     } else {
-        OSIncrementAtomic64(VOLATILE_ACCESS(disabled));
+        OSIncrementAtomic64(&counts[1]);
     }
-    OSIncrementAtomic64(VOLATILE_ACCESS(cpucount));
+    OSIncrementAtomic64(&counts[0]);
 }
 
 static void mp_log_prochot(void *data)
@@ -129,9 +172,8 @@ static bool disable_turbo(void)
         uint64_t new_bits = old_bits | kMsrDisableTurboBoost;
 
         if (old_bits != new_bits) {
-            // XXX: CPUID.06H:EAX[1] => 0
-            wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
-            IOSleep(1);
+            wrmsr_all(MSR_IA32_MISC_ENABLE, new_bits);
+            IODelay(1000);
             return rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost;
         }
     }
@@ -145,37 +187,87 @@ static bool disable_speedstep(void)
 
     if (registers[ecx] & (1 << 7)) {
         uint64_t old_bits = rdmsr64(MSR_IA32_MISC_ENABLE);
+
+        if (old_bits & kMsrSpeedStepLock) {
+            return false;
+        }
+
         uint64_t new_bits = old_bits & ~kMsrEnableSpeedStep;
 
         if (old_bits != new_bits) {
-            wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
-            IOSleep(1);
+            wrmsr_all(MSR_IA32_MISC_ENABLE, new_bits);
+            IODelay(1000);
             return !(rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrEnableSpeedStep);
         }
     }
     return true;
 }
 
-static bool eql_flag(const char *a, const char *b, size_t n)
+static uint8_t get_display_family(void)
 {
-    while (n > 0 && *a && *b) {
-        if (*a != *b || *a == ':' || *b == ':') return false;
-        ++a; ++b; --n;
+    uint32_t registers[4] = {[eax]=1, [ebx]=0, [ecx]=0, [edx]=0};
+    cpuid(registers);
+    uint8_t family = (registers[eax] >> 8) & 0x0F;
+    if (family == 0x0F) {
+        family += (registers[eax] >> 20) & 0xFF;
     }
-    return n == 0;
+    return family;
 }
-static bool has_flag(const char *args, const char *arg)
+
+static uint8_t get_display_model(void)
 {
-    if (arg[0] == '-' || arg[0] == '+') {
-        size_t n = strlen(arg);
-        for (const char *p = args; *p; ++p) {
-            if ((p == args || p[-1] == ':') && (p[n] == 0 || p[n] == ':')
-                    && eql_flag(p, arg, n)) {
-                return true;
-            }
+    uint32_t registers[4] = {[eax]=1, [ebx]=0, [ecx]=0, [edx]=0};
+    cpuid(registers);
+    uint8_t family = (registers[eax] >> 8) & 0x0F;
+    uint8_t model = (registers[eax] >> 4) & 0x0F;
+    if (family == 0x06 || family == 0x0F) {
+        model += ((registers[eax] >> 16) & 0x0F) << 4;
+    }
+    return model;
+}
+
+static bool is_xeon(void)
+{
+    char brand[49];
+    uint32_t registers[4];
+
+    registers[eax] = 0x80000000;
+    cpuid(registers);
+    if (registers[eax] < 0x80000004) return false;
+
+    for (uint32_t i = 0; i < 3; i++) {
+        registers[eax] = 0x80000002 + i;
+        cpuid(registers);
+        memcpy(brand + i * 16, registers, 16);
+    }
+    brand[48] = '\0';
+
+    for (int i = 0; i <= (int)sizeof(brand) - 5; i++) {
+        if ((brand[i] == 'x' || brand[i] == 'X') &&
+            (brand[i+1] == 'e' || brand[i+1] == 'E') &&
+            (brand[i+2] == 'o' || brand[i+2] == 'O') &&
+            (brand[i+3] == 'n' || brand[i+3] == 'N')) {
+            return true;
         }
     }
     return false;
+}
+
+static bool is_model_supported(uint8_t model)
+{
+    switch (model) {
+        case 0x1A: case 0x1E: case 0x1F: case 0x25: case 0x2A: case 0x2C:
+        case 0x2D: case 0x2E: case 0x2F: case 0x3A: case 0x3C: case 0x3D:
+        case 0x3E: case 0x3F: case 0x45: case 0x46: case 0x47: case 0x4E:
+        case 0x4F: case 0x55: case 0x56: case 0x5C: case 0x5E: case 0x66:
+        case 0x6A: case 0x6C: case 0x7A: case 0x7D: case 0x7E: case 0x86:
+        case 0x8C: case 0x8D: case 0x8E: case 0x96: case 0x97: case 0x9A:
+        case 0x9C: case 0x9E: case 0xA5: case 0xA6: case 0xB7: case 0xBA:
+        case 0xBF:
+            return true;
+        default:
+            return false;
+    }
 }
 
 static bool using_targeted_intel_cpu(void)
@@ -189,17 +281,36 @@ static bool using_targeted_intel_cpu(void)
                         registers[ecx] == 0x6C65746E &&
                         maxval >= 0x01;
 
-    // check cpu vendor
     if (GenuineIntel) {
-        registers[eax] = 0x01;
-        cpuid(registers);
-        // check cpu family but not model
-        if (((registers[eax] >> 8) & 0x0F) == 0x06) {
-            // supports package thermal management (PTM) ?
+        if (get_display_family() == 0x06 && is_model_supported(get_display_model())) {
             if (maxval >= 0x06) {
                 registers[eax] = 0x06;
                 cpuid(registers);
-                return registers[eax] & (1 << 6);
+                // Bi-directional PROCHOT [0] and PTM [6]
+                return (registers[eax] & (1 << 0)) && (registers[eax] & (1 << 6));
+            }
+        }
+    }
+    return false;
+}
+
+static bool eql_flag(const char *a, const char *b, size_t n)
+{
+    while (n > 0 && *a && *b) {
+        if (*a != *b || *a == ':' || *b == ':') return false;
+        ++a; ++b; --n;
+    }
+    return n == 0;
+}
+
+static bool has_flag(const char *args, const char *arg)
+{
+    if (arg[0] == '-' || arg[0] == '+') {
+        size_t n = strlen(arg);
+        for (const char *p = args; *p; ++p) {
+            if ((p == args || p[-1] == ':') && (p[n] == 0 || p[n] == ':')
+                    && eql_flag(p, arg, n)) {
+                return true;
             }
         }
     }
@@ -230,26 +341,9 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     }
     int ret = -1;
 
-    // GoodbyeBigSlow=<flags>  // "-": disable; "+": enable
 #define BOOT_ARGS_SIZE sizeof("-turbo:-speedstep")
-    // https://github.com/apple/darwin-xnu/blob/main/pexpert/gen/bootargs.c
-    // XXX: better use own parser if this kext is needed for macos < v10.11.6
-    // PE_parse_boot_argn(<key>, arg_ptr, arg_size) => matched?
-    //     argument (the part before "=" is compared with <key>)
-    //         boolean: (?P<key>-[^\x09\x20=]*)(=[^\x09\x20]*)?
-    //         key=val: (?P<key>[^\x09\x20\-=]*)=(?P<val>[^\x09\x20]*)
-    //         skipped: not -* nor *=*
-    // if boot-arg is boolean
-    // then *(intN_t *)arg_ptr = 1
-    // else if <key> begins with "_"
-    // then strlcpy(arg_ptr, <val>, max(16, arg_size - 1))  // forced & unsafe
-    // else if <val> is (+/-) 0xHHHH... 0b1010... 0755... (k/K/m/M/g/G)
-    // then *(intN_t *)arg_ptr = integer(<val>)  // N = max(arg_size * 8, 64)
-    // else strlcpy(arg_ptr, <val>, arg_size - 1)
-    // return true after the first match; no copy/assignment if arg_size is 0
     char boot_args[BOOT_ARGS_SIZE];
 
-    // FIXME: CPU model and MSR read/write permission not checked
     if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
         boot_args[BOOT_ARGS_SIZE - 1] = 0;
         if (has_flag(boot_args, "-turbo")) {
