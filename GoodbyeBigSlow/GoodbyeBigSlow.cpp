@@ -54,7 +54,7 @@ void GoodbyeBigSlow::stop(IOService* provider)
 
 IOReturn GoodbyeBigSlow::newUserClient(task_t owningTask, void* securityID, UInt32 type, OSDictionary* properties, IOUserClient** handler)
 {
-    if (clientHasPrivilege(owningTask, kIOClientPrivilegeAdministrator) != kIOReturnSuccess) {
+    if (IOUserClient::clientHasPrivilege(owningTask, kIOClientPrivilegeAdministrator) != kIOReturnSuccess) {
         return kIOReturnNotPrivileged;
     }
 
@@ -85,20 +85,20 @@ OSDefineMetaClassAndStructors(GoodbyeBigSlowUserClient, IOUserClient)
 
 bool GoodbyeBigSlowUserClient::initWithTask(task_t owningTask, void* securityID, UInt32 type, OSDictionary* properties)
 {
-    if (!super::initWithTask(owningTask, securityID, type, properties)) return false;
+    if (!IOUserClient::initWithTask(owningTask, securityID, type, properties)) return false;
     fTask = owningTask;
     return true;
 }
 
 bool GoodbyeBigSlowUserClient::start(IOService* provider)
 {
-    if (!super::start(provider)) return false;
+    if (!IOUserClient::start(provider)) return false;
     return true;
 }
 
 void GoodbyeBigSlowUserClient::stop(IOService* provider)
 {
-    super::stop(provider);
+    IOUserClient::stop(provider);
 }
 
 IOReturn GoodbyeBigSlowUserClient::clientClose(void)
@@ -109,6 +109,10 @@ IOReturn GoodbyeBigSlowUserClient::clientClose(void)
 
 IOReturn GoodbyeBigSlowUserClient::externalMethod(uint32_t selector, IOExternalMethodArguments* arguments, IOExternalMethodDispatch* dispatch, OSObject* target, void* reference)
 {
+    (void)dispatch;
+    (void)target;
+    (void)reference;
+
     if (selector == 0) { // rdmsr64
         if (arguments->scalarInputCount < 1 || arguments->scalarOutputCount < 1) return kIOReturnBadArgument;
         uint32_t msr = (uint32_t)arguments->scalarInput[0];
@@ -130,7 +134,7 @@ OSDefineMetaClassAndStructors(GoodbyeBigSlow_NoHardPLimits, IOService)
 
 bool GoodbyeBigSlow_NoHardPLimits::start(IOService* provider)
 {
-    if (!super::start(provider)) return false;
+    if (!IOService::start(provider)) return false;
     registerService();
     return true;
 }

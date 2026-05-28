@@ -294,25 +294,24 @@ static bool using_targeted_intel_cpu(void)
     return false;
 }
 
-extern char *PE_boot_args(void);
-
-static bool has_boot_arg_flag(const char *flag)
+static bool eql_flag(const char *a, const char *b, size_t n)
 {
-    const char *args = PE_boot_args();
-    if (!args) return false;
+    while (n > 0 && *a && *b) {
+        if (*a != *b || *a == ':' || *b == ':') return false;
+        ++a; ++b; --n;
+    }
+    return n == 0;
+}
 
-    size_t n = strlen(flag);
-    for (const char *p = args; *p; ++p) {
-        if ((p == args || p[-1] == ' ' || p[-1] == ':' || p[-1] == '=') &&
-            (p[n] == 0 || p[n] == ' ' || p[n] == ':' || p[n] == '=')) {
-            bool match = true;
-            for (size_t i = 0; i < n; i++) {
-                if (p[i] != flag[i]) {
-                    match = false;
-                    break;
-                }
+static bool has_flag(const char *args, const char *arg)
+{
+    if (arg[0] == '-' || arg[0] == '+') {
+        size_t n = strlen(arg);
+        for (const char *p = args; *p; ++p) {
+            if ((p == args || p[-1] == ':') && (p[n] == 0 || p[n] == ':')
+                    && eql_flag(p, arg, n)) {
+                return true;
             }
-            if (match) return true;
         }
     }
     return false;
@@ -342,15 +341,21 @@ static kern_return_t kext_start(__unused kmod_info_t *_o, __unused void *data)
     }
     int ret = -1;
 
-    if (has_boot_arg_flag("-turbo")) {
-        DBLogStatus("Disabling Turbo Boost", -1);
-        ret = disable_turbo();
-        DBLogStatus("Disabling Turbo Boost", ret);
-    }
-    if (has_boot_arg_flag("-speedstep")) {
-        DBLogStatus("Disabling SpeedStep", -1);
-        ret = disable_speedstep();
-        DBLogStatus("Disabling SpeedStep", ret);
+#define BOOT_ARGS_SIZE sizeof("-turbo:-speedstep")
+    char boot_args[BOOT_ARGS_SIZE];
+
+    if (PE_parse_boot_argn("GoodbyeBigSlow", &boot_args, BOOT_ARGS_SIZE)) {
+        boot_args[BOOT_ARGS_SIZE - 1] = 0;
+        if (has_flag(boot_args, "-turbo")) {
+            DBLogStatus("Disabling Turbo Boost", -1);
+            ret = disable_turbo();
+            DBLogStatus("Disabling Turbo Boost", ret);
+        }
+        if (has_flag(boot_args, "-speedstep")) {
+            DBLogStatus("Disabling SpeedStep", -1);
+            ret = disable_speedstep();
+            DBLogStatus("Disabling SpeedStep", ret);
+        }
     }
 
     DBLogStatus("De-asserting Processor Hot", -1);

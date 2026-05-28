@@ -26,9 +26,9 @@ void cpuid(uint32_t *regs) {
     }
 }
 
+bool PE_parse_boot_argn(const char *name, void *arg_ptr, int max_len) { (void)name; (void)arg_ptr; (void)max_len; return false; }
 uint64_t rdmsr64(uint32_t msr) { (void)msr; return 0; }
 void wrmsr64(uint32_t msr, uint64_t val) { (void)msr; (void)val; }
-char *PE_boot_args(void) { return ""; }
 void mp_rendezvous_no_intrs(void (*func)(void *), void *arg) { (void)func; (void)arg; }
 
 #include "GoodbyeBigSlow.c"
