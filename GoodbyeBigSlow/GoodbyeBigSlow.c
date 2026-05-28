@@ -129,10 +129,14 @@ static bool disable_turbo(void)
         uint64_t new_bits = old_bits | kMsrDisableTurboBoost;
 
         if (old_bits != new_bits) {
-            // XXX: CPUID.06H:EAX[1] => 0
             wrmsr64(MSR_IA32_MISC_ENABLE, new_bits);
             IOSleep(1);
-            return rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost;
+
+            registers[eax] = 6;
+            cpuid(registers);
+
+            return (rdmsr64(MSR_IA32_MISC_ENABLE) & kMsrDisableTurboBoost) &&
+                   !(registers[eax] & (1 << 1));
         }
     }
     return true;
