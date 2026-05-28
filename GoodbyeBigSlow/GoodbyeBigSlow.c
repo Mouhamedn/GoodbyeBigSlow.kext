@@ -169,8 +169,8 @@ static bool has_flag(const char *args, const char *arg)
     if (arg[0] == '-' || arg[0] == '+') {
         size_t n = strlen(arg);
         for (const char *p = args; *p; ++p) {
-            if ((p == args || p[-1] == ':') && (p[n] == 0 || p[n] == ':')
-                    && eql_flag(p, arg, n)) {
+            if ((p == args || p[-1] == ':') && eql_flag(p, arg, n)
+                    && (p[n] == 0 || p[n] == ':')) {
                 return true;
             }
         }
