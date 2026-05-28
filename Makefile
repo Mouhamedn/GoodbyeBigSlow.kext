@@ -42,7 +42,10 @@ CODE_SIGN_IDENTITY := -
 # $ nm /System/Library/Kernels/kernel | less
 # $ otool -xV /System/Library/Kernels/kernel | less
 # $ kextfind -rsym _pmCPUControl
-all: $(KEXT_BIN)
+all: $(KEXT_BIN) GoodbyeBigSlowClient
+
+GoodbyeBigSlowClient: GoodbyeBigSlow/client.c GoodbyeBigSlow/GoodbyeBigSlowShared.h
+	$(CC) $(CFLAGS) -I"$(NAME)" GoodbyeBigSlow/client.c -o build/Release/GoodbyeBigSlowClient -framework IOKit -framework CoreFoundation
 
 $(KEXT_BIN): $(KEXT_DEPS) # $(PLUGIN_DIR)
 ifeq ($(XCODE),ON)
