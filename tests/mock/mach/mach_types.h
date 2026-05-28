@@ -5,6 +5,10 @@
 #define __unused __attribute__((unused))
 #endif
 
+#ifndef __APPLE_CC__
+#define __APPLE_CC__ 1
+#endif
+
 typedef int kern_return_t;
 #define KERN_SUCCESS 0
 #define KERN_FAILURE 1
